@@ -18,28 +18,40 @@ function hasAdminOrManageGuild(permissions: string | number | bigint): boolean {
 
 interface DiscordGuild {
   id: string;
+  name: string;
+  icon: string | null;
   owner: boolean;
   permissions: string;
+  features?: string[];
 }
 
 interface DiscordMember {
   roles: string[];
 }
 
-async function fetchGuildViaOAuth(
+async function fetchUserGuildsViaOAuth(
   accessToken: string,
-  guildId: string,
-): Promise<DiscordGuild | null> {
+): Promise<DiscordGuild[] | null> {
   try {
     const res = await fetch(
-      `https://discord.com/api/v10/users/@me/guilds/${guildId}`,
+      `https://discord.com/api/v10/users/@me/guilds?limit=200`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     if (!res.ok) return null;
-    return (await res.json()) as DiscordGuild;
+    const data = (await res.json()) as DiscordGuild[];
+    return Array.isArray(data) ? data : null;
   } catch {
     return null;
   }
+}
+
+async function findUserGuild(
+  accessToken: string,
+  guildId: string,
+): Promise<DiscordGuild | null> {
+  const guilds = await fetchUserGuildsViaOAuth(accessToken);
+  if (!guilds) return null;
+  return guilds.find((g) => g.id === guildId) ?? null;
 }
 
 async function fetchMemberViaBot(
@@ -82,7 +94,7 @@ export default async function GuildLayout({
     redirect("/login");
   }
 
-  const guild = await fetchGuildViaOAuth(session.accessToken, params.guildId);
+  const guild = await findUserGuild(session.accessToken, params.guildId);
   if (!guild) {
     logDeniedAccess({
       guildId: params.guildId,

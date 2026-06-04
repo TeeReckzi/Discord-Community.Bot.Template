@@ -50,8 +50,11 @@ function hasAdminOrManageGuild(permissions: string | number | bigint): boolean {
 
 interface DiscordGuild {
   id: string;
+  name: string;
+  icon: string | null;
   owner: boolean;
   permissions: string;
+  features?: string[];
 }
 
 interface DiscordMember {
@@ -64,16 +67,31 @@ function botTokenOrNull(): string | null {
   return token && token.length > 0 ? token : null;
 }
 
-async function fetchGuildViaOAuth(
+/**
+ * Discord does not expose `GET /users/@me/guilds/{guildId}`.
+ * The only OAuth endpoint that returns per-user guild data with
+ * `owner` and `permissions` is the bulk `GET /users/@me/guilds`.
+ * We fetch the list and find the target by id.
+ */
+async function fetchUserGuildsViaOAuth(
   accessToken: string,
-  guildId: string,
-): Promise<DiscordGuild | null> {
+): Promise<DiscordGuild[] | null> {
   const res = await fetch(
-    `https://discord.com/api/v10/users/@me/guilds/${guildId}`,
+    `https://discord.com/api/v10/users/@me/guilds?limit=200`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!res.ok) return null;
-  return (await res.json()) as DiscordGuild;
+  const data = (await res.json()) as DiscordGuild[];
+  return Array.isArray(data) ? data : null;
+}
+
+async function findUserGuild(
+  accessToken: string,
+  guildId: string,
+): Promise<DiscordGuild | null> {
+  const guilds = await fetchUserGuildsViaOAuth(accessToken);
+  if (!guilds) return null;
+  return guilds.find((g) => g.id === guildId) ?? null;
 }
 
 async function fetchMemberViaBot(
@@ -128,7 +146,7 @@ export async function requireGuildManager(
 
   let guild: DiscordGuild | null = null;
   try {
-    guild = await fetchGuildViaOAuth(sessionUser.accessToken, guildId);
+    guild = await findUserGuild(sessionUser.accessToken, guildId);
   } catch {
     guild = null;
   }
