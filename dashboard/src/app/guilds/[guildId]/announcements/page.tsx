@@ -5,9 +5,10 @@ import { useParams } from 'next/navigation';
 
 interface Announcement {
   id: string;
-  title: string;
-  message: string;
-  channel: string;
+  content: string;
+  embed: boolean;
+  embedTitle: string | null;
+  channelId: string;
   createdAt: string;
 }
 
@@ -73,12 +74,14 @@ export default function AnnouncementsPage() {
                   border: '1px solid rgba(255,255,255,0.06)',
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{item.title}</div>
+                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                  {item.embedTitle ?? "(no embed title)"}
+                </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                  {item.message}
+                  {item.content}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Channel: {item.channel} &middot; {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
+                  Channel: {item.channelId} &middot; {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}
                 </div>
               </div>
             ))}

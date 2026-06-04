@@ -6,9 +6,9 @@ import { useParams } from 'next/navigation';
 interface SocialFeed {
   id: string;
   platform: string;
-  channel: string;
-  feedUrl: string;
-  enabled: boolean;
+  channelId: string;
+  channelId_or_username: string;
+  createdAt: string;
 }
 
 const platformColors: Record<string, string> = {
@@ -101,9 +101,9 @@ export default function SocialsPage() {
                     {feed.platform}
                   </span>
                   <div>
-                    <div style={{ fontWeight: 500 }}>{feed.feedUrl}</div>
+                    <div style={{ fontWeight: 500 }}>{feed.channelId_or_username}</div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      Channel: {feed.channel}
+                      Channel: {feed.channelId}
                     </div>
                   </div>
                 </div>
@@ -112,11 +112,11 @@ export default function SocialsPage() {
                     fontSize: '0.8rem',
                     padding: '0.25rem 0.5rem',
                     borderRadius: 4,
-                    backgroundColor: feed.enabled ? 'rgba(87, 242, 135, 0.15)' : 'rgba(160, 163, 200, 0.15)',
-                    color: feed.enabled ? 'var(--success)' : 'var(--text-secondary)',
+                    backgroundColor: 'rgba(87, 242, 135, 0.15)',
+                    color: 'var(--success)',
                   }}
                 >
-                  {feed.enabled ? 'Active' : 'Disabled'}
+                  Active
                 </span>
               </div>
             ))}

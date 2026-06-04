@@ -33,32 +33,58 @@ export async function POST(
     const { guildId } = params;
     const body = await req.json();
 
-    if (!body.type || !["welcome", "leave"].includes(body.type)) {
-      return NextResponse.json({ error: "type must be 'welcome' or 'leave'" }, { status: 400 });
+    // Accept either a single-section save ({ type, ... }) or a combined
+    // save ({ welcome: {...}, leave: {...} }) from the dashboard form.
+    const sections: Array<{ type: string; data: Record<string, unknown> }> = [];
+    if (body.type && (body.type === "welcome" || body.type === "leave")) {
+      sections.push({ type: body.type, data: body });
+    } else {
+      if (body.welcome && typeof body.welcome === "object") {
+        sections.push({ type: "welcome", data: body.welcome });
+      }
+      if (body.leave && typeof body.leave === "object") {
+        sections.push({ type: "leave", data: body.leave });
+      }
     }
 
-    const config = await prisma.welcomeLeaveConfig.upsert({
-      where: { guildId },
-      create: {
-        guildId,
-        type: body.type,
-        channelId: body.channelId ?? null,
-        message: body.message ?? "Welcome {user} to {server}!",
-        embedEnabled: body.embedEnabled ?? false,
-        embedColor: body.embedColor ?? "#5865F2",
-        embedTitle: body.embedTitle ?? null,
-      },
-      update: {
-        type: body.type,
-        ...(body.channelId !== undefined && { channelId: body.channelId }),
-        ...(body.message !== undefined && { message: body.message }),
-        ...(body.embedEnabled !== undefined && { embedEnabled: body.embedEnabled }),
-        ...(body.embedColor !== undefined && { embedColor: body.embedColor }),
-        ...(body.embedTitle !== undefined && { embedTitle: body.embedTitle }),
-      },
-    });
+    if (sections.length === 0) {
+      return NextResponse.json(
+        { error: "Body must include type=welcome|leave, or welcome/leave objects." },
+        { status: 400 },
+      );
+    }
 
-    return NextResponse.json(config, { status: 201 });
+    const results = [];
+    for (const section of sections) {
+      const d = section.data;
+      const config = await prisma.welcomeLeaveConfig.upsert({
+        where: { guildId_type: { guildId, type: section.type } } as any,
+        create: {
+          guildId,
+          type: section.type,
+          channelId: typeof d.channelId === "string" ? d.channelId : null,
+          message:
+            typeof d.message === "string" && d.message.length > 0
+              ? d.message
+              : section.type === "welcome"
+              ? "Welcome {user} to {server}!"
+              : "{user} has left {server}.",
+          embedEnabled: !!d.embedEnabled,
+          embedColor: typeof d.embedColor === "string" ? d.embedColor : "#5865F2",
+          embedTitle: typeof d.embedTitle === "string" ? d.embedTitle : null,
+        },
+        update: {
+          ...(d.channelId !== undefined && { channelId: typeof d.channelId === "string" ? d.channelId : null }),
+          ...(d.message !== undefined && { message: String(d.message) }),
+          ...(d.embedEnabled !== undefined && { embedEnabled: !!d.embedEnabled }),
+          ...(d.embedColor !== undefined && { embedColor: typeof d.embedColor === "string" ? d.embedColor : null }),
+          ...(d.embedTitle !== undefined && { embedTitle: typeof d.embedTitle === "string" ? d.embedTitle : null }),
+        },
+      });
+      results.push(config);
+    }
+
+    return NextResponse.json(results, { status: 201 });
   } catch (error) {
     console.error("Error upserting welcome config:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

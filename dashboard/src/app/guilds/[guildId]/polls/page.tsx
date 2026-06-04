@@ -11,10 +11,27 @@ interface PollOption {
 interface Poll {
   id: string;
   question: string;
-  channel: string;
-  options: PollOption[];
-  active: boolean;
+  channelId: string;
+  options: string | PollOption[];
+  ended: boolean;
   endsAt: string;
+}
+
+function parseOptions(raw: string | PollOption[] | null | undefined): PollOption[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((o: { label?: string; votes?: number }) => ({
+        label: String(o.label ?? ""),
+        votes: Number(o.votes ?? 0),
+      }));
+    }
+  } catch {
+    /* fall through */
+  }
+  return [];
 }
 
 export default function PollsPage() {
@@ -83,7 +100,7 @@ export default function PollsPage() {
                   <div>
                     <div style={{ fontWeight: 600 }}>{poll.question}</div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      Channel: {poll.channel}
+                      Channel: {poll.channelId}
                       {poll.endsAt ? ` \u00B7 Ends: ${new Date(poll.endsAt).toLocaleDateString()}` : ''}
                     </div>
                   </div>
@@ -92,23 +109,27 @@ export default function PollsPage() {
                       fontSize: '0.8rem',
                       padding: '0.25rem 0.5rem',
                       borderRadius: 4,
-                      backgroundColor: poll.active ? 'rgba(87, 242, 135, 0.15)' : 'rgba(160, 163, 200, 0.15)',
-                      color: poll.active ? 'var(--success)' : 'var(--text-secondary)',
+                      backgroundColor: !poll.ended ? 'rgba(87, 242, 135, 0.15)' : 'rgba(160, 163, 200, 0.15)',
+                      color: !poll.ended ? 'var(--success)' : 'var(--text-secondary)',
                     }}
                   >
-                    {poll.active ? 'Active' : 'Closed'}
+                    {poll.ended ? 'Closed' : 'Active'}
                   </span>
                 </div>
-                {poll.options && poll.options.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                    {poll.options.map((opt, idx) => (
-                      <div key={idx} style={{ fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{opt.label}</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{opt.votes} votes</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const opts = parseOptions(poll.options);
+                  if (opts.length === 0) return null;
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      {opts.map((opt, idx) => (
+                        <div key={idx} style={{ fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{opt.label}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{opt.votes} votes</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

@@ -114,13 +114,15 @@ model Announcement {
 
 model WelcomeLeaveConfig {
   id          String @id @default(uuid())
-  guildId     String @unique
+  guildId     String
   type        String
   channelId   String?
   message     String  @default("Welcome {user} to {server}!")
   embedEnabled Boolean @default(false)
   embedColor  String? @default("#5865F2")
   embedTitle  String?
+
+  @@unique([guildId, type])
 }
 
 model ReactionRolePanel {

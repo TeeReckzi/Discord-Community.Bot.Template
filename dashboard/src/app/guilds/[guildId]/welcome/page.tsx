@@ -3,27 +3,52 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 
+interface SectionConfig {
+  enabled: boolean;
+  channelId: string;
+  message: string;
+  embedEnabled: boolean;
+  embedTitle: string;
+}
+
 interface WelcomeConfig {
-  welcome: {
-    enabled: boolean;
-    channel: string;
-    message: string;
-    embed: boolean;
-    embedTitle: string;
-  };
-  leave: {
-    enabled: boolean;
-    channel: string;
-    message: string;
-    embed: boolean;
-    embedTitle: string;
-  };
+  welcome: SectionConfig;
+  leave: SectionConfig;
+}
+
+interface ApiSection {
+  id: string;
+  guildId: string;
+  type: 'welcome' | 'leave';
+  channelId: string | null;
+  message: string;
+  embedEnabled: boolean;
+  embedTitle: string | null;
 }
 
 const defaultConfig: WelcomeConfig = {
-  welcome: { enabled: false, channel: '', message: '', embed: false, embedTitle: '' },
-  leave: { enabled: false, channel: '', message: '', embed: false, embedTitle: '' },
+  welcome: { enabled: false, channelId: '', message: '', embedEnabled: false, embedTitle: '' },
+  leave: { enabled: false, channelId: '', message: '', embedEnabled: false, embedTitle: '' },
 };
+
+function fromApi(sections: ApiSection[]): WelcomeConfig {
+  const out: WelcomeConfig = {
+    welcome: { ...defaultConfig.welcome },
+    leave: { ...defaultConfig.leave },
+  };
+  for (const s of sections) {
+    if (s.type === 'welcome' || s.type === 'leave') {
+      out[s.type] = {
+        enabled: true,
+        channelId: s.channelId ?? '',
+        message: s.message ?? '',
+        embedEnabled: !!s.embedEnabled,
+        embedTitle: s.embedTitle ?? '',
+      };
+    }
+  }
+  return out;
+}
 
 export default function WelcomePage() {
   const params = useParams<{ guildId: string }>();
@@ -42,17 +67,12 @@ export default function WelcomePage() {
           return;
         }
         if (!res.ok) {
-          if (res.status === 404) {
-            setConfig(defaultConfig);
-            setLoading(false);
-            return;
-          }
           setError(`Failed to load welcome settings (${res.status})`);
           setLoading(false);
           return;
         }
-        const json: WelcomeConfig = await res.json();
-        setConfig(json);
+        const json: ApiSection[] = await res.json();
+        setConfig(fromApi(Array.isArray(json) ? json : []));
       } catch {
         setError('An unexpected error occurred');
       } finally {
@@ -69,7 +89,20 @@ export default function WelcomePage() {
       const res = await fetch(`/api/guilds/${params.guildId}/welcome`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+          welcome: {
+            channelId: config.welcome.channelId,
+            message: config.welcome.message,
+            embedEnabled: config.welcome.embedEnabled,
+            embedTitle: config.welcome.embedTitle,
+          },
+          leave: {
+            channelId: config.leave.channelId,
+            message: config.leave.message,
+            embedEnabled: config.leave.embedEnabled,
+            embedTitle: config.leave.embedTitle,
+          },
+        }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -121,13 +154,15 @@ export default function WelcomePage() {
           title="Welcome Message"
           config={config.welcome}
           onChange={(welcome) => setConfig((prev) => ({ ...prev, welcome }))}
-          prefix="welcome"
+          messagePlaceholder="Welcome {user} to the server!"
+          defaultMessage="Welcome {user} to {server}!"
         />
         <SectionCard
           title="Leave Message"
           config={config.leave}
           onChange={(leave) => setConfig((prev) => ({ ...prev, leave }))}
-          prefix="leave"
+          messagePlaceholder="{user} has left the server."
+          defaultMessage="{user} has left {server}."
         />
       </div>
     </div>
@@ -138,63 +173,60 @@ function SectionCard({
   title,
   config,
   onChange,
+  messagePlaceholder,
+  defaultMessage,
 }: {
   title: string;
-  config: { enabled: boolean; channel: string; message: string; embed: boolean; embedTitle: string };
-  onChange: (val: typeof config) => void;
-  prefix: string;
+  config: SectionConfig;
+  onChange: (val: SectionConfig) => void;
+  messagePlaceholder: string;
+  defaultMessage: string;
 }) {
   return (
     <div className="card">
       <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>{title}</h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={config.enabled}
-            onChange={(e) => onChange({ ...config, enabled: e.target.checked })}
-          />
-          <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>Enabled</span>
-        </label>
-
         <div>
-          <label htmlFor="channel">Channel ID</label>
+          <label htmlFor={`${title}-channel`}>Channel ID</label>
           <input
-            id="channel"
+            id={`${title}-channel`}
             className="input"
             placeholder="123456789012345678"
-            value={config.channel}
-            onChange={(e) => onChange({ ...config, channel: e.target.value })}
+            value={config.channelId}
+            onChange={(e) => onChange({ ...config, channelId: e.target.value })}
           />
         </div>
 
         <div>
-          <label htmlFor="message">Message</label>
+          <label htmlFor={`${title}-message`}>Message</label>
           <textarea
-            id="message"
+            id={`${title}-message`}
             className="textarea"
-            placeholder="Welcome {user} to the server!"
+            placeholder={messagePlaceholder}
             value={config.message}
             onChange={(e) => onChange({ ...config, message: e.target.value })}
           />
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Variables: {'{user}'} {'{server}'} {'{memberCount}'}. Leave blank for default.
+          </p>
         </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
           <input
             type="checkbox"
-            checked={config.embed}
-            onChange={(e) => onChange({ ...config, embed: e.target.checked })}
+            checked={config.embedEnabled}
+            onChange={(e) => onChange({ ...config, embedEnabled: e.target.checked })}
           />
           <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>Use Embed</span>
         </label>
 
         <div>
-          <label htmlFor="embedTitle">Embed Title</label>
+          <label htmlFor={`${title}-embedTitle`}>Embed Title (optional)</label>
           <input
-            id="embedTitle"
+            id={`${title}-embedTitle`}
             className="input"
-            placeholder="Welcome to the server!"
+            placeholder="Welcome!"
             value={config.embedTitle}
             onChange={(e) => onChange({ ...config, embedTitle: e.target.value })}
           />

@@ -6,10 +6,10 @@ import { useParams } from 'next/navigation';
 interface Giveaway {
   id: string;
   prize: string;
-  channel: string;
-  winners: number;
+  channelId: string;
+  winnerCount: number;
   endsAt: string;
-  active: boolean;
+  ended: boolean;
 }
 
 export default function GiveawaysPage() {
@@ -80,7 +80,7 @@ export default function GiveawaysPage() {
                 <div>
                   <div style={{ fontWeight: 600 }}>{item.prize}</div>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Channel: {item.channel} &middot; {item.winners} winner{item.winners !== 1 ? 's' : ''}
+                    Channel: {item.channelId} &middot; {item.winnerCount} winner{item.winnerCount !== 1 ? 's' : ''}
                     {item.endsAt ? ` \u00B7 Ends: ${new Date(item.endsAt).toLocaleDateString()}` : ''}
                   </div>
                 </div>
@@ -89,11 +89,11 @@ export default function GiveawaysPage() {
                     fontSize: '0.8rem',
                     padding: '0.25rem 0.5rem',
                     borderRadius: 4,
-                    backgroundColor: item.active ? 'rgba(87, 242, 135, 0.15)' : 'rgba(160, 163, 200, 0.15)',
-                    color: item.active ? 'var(--success)' : 'var(--text-secondary)',
+                    backgroundColor: !item.ended ? 'rgba(87, 242, 135, 0.15)' : 'rgba(160, 163, 200, 0.15)',
+                    color: !item.ended ? 'var(--success)' : 'var(--text-secondary)',
                   }}
                 >
-                  {item.active ? 'Active' : 'Ended'}
+                  {item.ended ? 'Ended' : 'Active'}
                 </span>
               </div>
             ))}
