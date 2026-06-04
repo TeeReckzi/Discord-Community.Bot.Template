@@ -16,11 +16,12 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  AttachmentBuilder,
 } from "discord.js";
 
 import prisma from "../../services/prisma";
 import { logger } from "../../services/logger";
-import { generateTranscript } from "../../utils/transcripts";
+import { generateTranscript, transcriptToBuffer, transcriptFilename } from "../../utils/transcripts";
 import { safeDeferReply, safeDeferUpdate, safeReply, safeEditReply, safeFollowUp } from "../../services/interactions";
 import { brandedEmbed, successEmbed, errorEmbed } from "../../services/embeds";
 
@@ -103,9 +104,15 @@ async function isTicketChannel(channelId: string): Promise<boolean> {
   }
 }
 
-async function getTicket(channelId: string) {
+async function getTicket(
+  channelId: string,
+  options: { requireOpen?: boolean } = {},
+) {
   try {
-    return await prisma.ticket.findUnique({ where: { channelId } });
+    const ticket = await prisma.ticket.findUnique({ where: { channelId } });
+    if (!ticket) return null;
+    if (options.requireOpen && ticket.status !== "open") return null;
+    return ticket;
   } catch {
     return null;
   }
@@ -113,14 +120,14 @@ async function getTicket(channelId: string) {
 
 async function sendToLogChannel(
   guild: Guild,
-  embed: { embeds: any[] },
+  payload: { embeds?: any[]; files?: any[]; content?: string },
 ): Promise<void> {
   try {
     const config = await prisma.guildConfig.findUnique({ where: { guildId: guild.id } });
     if (!config?.logChannel) return;
     const logChannel = guild.channels.cache.get(config.logChannel) as TextChannel | undefined;
     if (logChannel) {
-      await logChannel.send(embed);
+      await logChannel.send(payload);
     }
   } catch (error) {
     logger.error(`Failed to send to log channel: ${error}`);
@@ -218,7 +225,7 @@ export async function handleClose(
   }
 
   const channel = interaction.channel as TextChannel;
-  const ticket = await getTicket(channel.id);
+  const ticket = await getTicket(channel.id, { requireOpen: true });
 
   if (!ticket) {
     await safeReply(interaction, { embeds: [errorEmbed("This channel is not an open ticket.")], ephemeral: true });
@@ -229,6 +236,9 @@ export async function handleClose(
 
   try {
     const transcript = await generateTranscript(channel);
+    const attachment = new AttachmentBuilder(transcriptToBuffer(transcript), {
+      name: transcriptFilename(channel.name),
+    });
 
     await prisma.ticket.update({
       where: { channelId: channel.id },
@@ -259,7 +269,25 @@ export async function handleClose(
       { name: "Creator", value: `<@${ticket.creatorId}>`, inline: true },
       { name: "Subject", value: ticket.subject ?? "No subject", inline: true },
     );
-    await sendToLogChannel(interaction.guild, { embeds: [logEmbed] });
+    await sendToLogChannel(interaction.guild, {
+      embeds: [logEmbed],
+      files: [attachment],
+    });
+
+    // Best-effort DM the transcript to the creator. If the user has
+    // DMs closed this silently no-ops; the log channel still has the file.
+    try {
+      const creator = await interaction.client.users.fetch(ticket.creatorId);
+      const dmEmbed = await brandedEmbed(interaction.guild.id);
+      dmEmbed.setTitle(`Ticket Closed - ${channel.name}`);
+      dmEmbed.setDescription(
+        `Your ticket in **${interaction.guild.name}** was closed by <@${interaction.user.id}>.\n` +
+          `A transcript is attached.`,
+      );
+      await creator.send({ embeds: [dmEmbed], files: [attachment] });
+    } catch (dmError) {
+      logger.debug(`Could not DM ticket creator ${ticket.creatorId}: ${dmError}`);
+    }
 
     await channel.delete();
     logger.info(`Deleted ticket channel: ${channel.name}`);
@@ -280,7 +308,7 @@ export async function handleRename(
   }
 
   const channel = interaction.channel as TextChannel;
-  const ticket = await getTicket(channel.id);
+  const ticket = await getTicket(channel.id, { requireOpen: true });
 
   if (!ticket) {
     await safeReply(interaction, { embeds: [errorEmbed("This channel is not an open ticket.")], ephemeral: true });
@@ -306,6 +334,11 @@ export async function handleRename(
       `Renamed ticket from "${channel.name}" to "${sanitized}"`,
     );
 
+    const logEmbed = await brandedEmbed(interaction.guild.id);
+    logEmbed.setTitle("Ticket Renamed");
+    logEmbed.setDescription(`<@${interaction.user.id}> renamed ticket **${channel.name}** to **${sanitized}**.`);
+    await sendToLogChannel(interaction.guild, { embeds: [logEmbed] });
+
     await safeReply(interaction, { embeds: [successEmbed(`Ticket renamed to **${sanitized}**.`)] });
   } catch (error) {
     logger.error(`Failed to rename ticket: ${error}`);
@@ -324,7 +357,7 @@ export async function handleMove(
   }
 
   const channel = interaction.channel as TextChannel;
-  const ticket = await getTicket(channel.id);
+  const ticket = await getTicket(channel.id, { requireOpen: true });
 
   if (!ticket) {
     await safeReply(interaction, { embeds: [errorEmbed("This channel is not an open ticket.")], ephemeral: true });
@@ -350,6 +383,11 @@ export async function handleMove(
       `Moved ticket to category "${targetCategory.name}"`,
     );
 
+    const logEmbed = await brandedEmbed(interaction.guild.id);
+    logEmbed.setTitle("Ticket Moved");
+    logEmbed.setDescription(`<@${interaction.user.id}> moved ticket **${channel.name}** to category **${targetCategory.name}**.`);
+    await sendToLogChannel(interaction.guild, { embeds: [logEmbed] });
+
     await safeReply(interaction, { embeds: [successEmbed(`Ticket moved to category **${targetCategory.name}**.`)] });
   } catch (error) {
     logger.error(`Failed to move ticket: ${error}`);
@@ -368,7 +406,7 @@ export async function handleAddUser(
   }
 
   const channel = interaction.channel as TextChannel;
-  const ticket = await getTicket(channel.id);
+  const ticket = await getTicket(channel.id, { requireOpen: true });
 
   if (!ticket) {
     await safeReply(interaction, { embeds: [errorEmbed("This channel is not an open ticket.")], ephemeral: true });
@@ -397,10 +435,15 @@ export async function handleAddUser(
       interaction.guild.id,
       "ticket_add_user",
       interaction.user.id,
-      ticket.creatorId,
+      targetUser.id,
       null,
       `Added <@${member.id}> to ticket`,
     );
+
+    const logEmbed = await brandedEmbed(interaction.guild.id);
+    logEmbed.setTitle("Ticket: User Added");
+    logEmbed.setDescription(`<@${interaction.user.id}> added <@${member.id}> to ticket **${channel.name}**.`);
+    await sendToLogChannel(interaction.guild, { embeds: [logEmbed] });
 
     await safeReply(interaction, { embeds: [successEmbed(`Added **${member.user.tag}** to the ticket.`)] });
   } catch (error) {
@@ -420,7 +463,7 @@ export async function handleRemoveUser(
   }
 
   const channel = interaction.channel as TextChannel;
-  const ticket = await getTicket(channel.id);
+  const ticket = await getTicket(channel.id, { requireOpen: true });
 
   if (!ticket) {
     await safeReply(interaction, { embeds: [errorEmbed("This channel is not an open ticket.")], ephemeral: true });
@@ -441,10 +484,15 @@ export async function handleRemoveUser(
       interaction.guild.id,
       "ticket_remove_user",
       interaction.user.id,
-      ticket.creatorId,
+      targetUser.id,
       null,
       `Removed <@${targetUser.id}> from ticket`,
     );
+
+    const logEmbed = await brandedEmbed(interaction.guild.id);
+    logEmbed.setTitle("Ticket: User Removed");
+    logEmbed.setDescription(`<@${interaction.user.id}> removed <@${targetUser.id}> from ticket **${channel.name}**.`);
+    await sendToLogChannel(interaction.guild, { embeds: [logEmbed] });
 
     await safeReply(interaction, { embeds: [successEmbed(`Removed **${targetUser.tag}** from the ticket.`)] });
   } catch (error) {

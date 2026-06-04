@@ -1,7 +1,11 @@
 import { TextChannel, Message, Collection } from "discord.js";
 
+const TRANSCRIPT_FETCH_LIMIT = 100;
+
 export async function generateTranscript(channel: TextChannel): Promise<string> {
-  const messages: Collection<string, Message> = await channel.messages.fetch({ limit: 100 });
+  const messages: Collection<string, Message> = await channel.messages.fetch({
+    limit: TRANSCRIPT_FETCH_LIMIT,
+  });
 
   const transcriptLines: string[] = [
     `# Ticket Transcript - ${channel.name}`,
@@ -33,6 +37,14 @@ export async function generateTranscript(channel: TextChannel): Promise<string> 
   }
 
   return transcriptLines.join("\n");
+}
+
+export function transcriptToBuffer(text: string): Buffer {
+  return Buffer.from(text, "utf8");
+}
+
+export function transcriptFilename(channelName: string): string {
+  return `transcript-${channelName}-${formatTranscriptDate()}.md`;
 }
 
 export function formatTranscriptDate(): string {

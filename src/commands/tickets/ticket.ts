@@ -1,13 +1,11 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
-  GuildMember,
-  PermissionFlagsBits,
 } from "discord.js";
 
-import { safeDeferReply, safeReply } from "../../services/interactions";
+import { safeDeferReply, safeEditReply } from "../../services/interactions";
 import { errorEmbed } from "../../services/embeds";
-import { requireStaff } from "../../services/permissions";
+import { requireBotManager } from "../../services/permissions";
 import { logger } from "../../services/logger";
 
 import {
@@ -19,8 +17,6 @@ import {
   handleAddUser,
   handleRemoveUser,
 } from "../../modules/tickets/ticketManager";
-
-const STAFF_ONLY_SUBCOMMANDS = ["setup", "close", "rename", "move", "add-user", "remove-user"];
 
 export const data = new SlashCommandBuilder()
   .setName("ticket")
@@ -98,36 +94,14 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) {
-    await safeReply(interaction, { embeds: [errorEmbed("This command can only be used in a server.")], ephemeral: true });
-    return;
-  }
-
   const subcommand = interaction.options.getSubcommand();
 
-  if (subcommand !== "panel" && STAFF_ONLY_SUBCOMMANDS.includes(subcommand)) {
-    const isStaff = await requireStaff(interaction, true);
-    if (!isStaff) {
-      const hasAdmin = interaction.member instanceof GuildMember &&
-        (interaction.member.permissions.has(PermissionFlagsBits.Administrator) ||
-         interaction.member.permissions.has(PermissionFlagsBits.ManageGuild));
-      if (!hasAdmin) {
-        const config = await (await import("../../services/prisma")).default
-          .guildConfig
-          .findUnique({ where: { guildId: interaction.guild.id } });
-        const staffRole = config?.staffRole;
-        const roleCheck = staffRole && interaction.member instanceof GuildMember
-          ? interaction.member.roles.cache.has(staffRole)
-          : false;
-        if (!roleCheck) {
-          await safeReply(interaction, {
-            embeds: [errorEmbed("You need the **Administrator**, **Manage Server**, or configured staff role to use this command.")],
-            ephemeral: true,
-          });
-          return;
-        }
-      }
-    }
+  // /ticket close: allow the ticket creator OR a bot manager.
+  // Other subcommands remain admin/staff-only.
+  if (subcommand === "close") {
+    if (!(await isTicketManagerOrCreator(interaction))) return;
+  } else {
+    if (!(await requireBotManager(interaction))) return;
   }
 
   try {
@@ -154,14 +128,50 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         await handleRemoveUser(interaction);
         break;
       default:
-        await safeReply(interaction, { embeds: [errorEmbed("Unknown subcommand.")], ephemeral: true });
+        await safeDeferReply(interaction, true);
+        await safeEditReply(interaction, {
+          embeds: [errorEmbed("Unknown subcommand.")],
+          ephemeral: true,
+        });
     }
   } catch (error) {
     logger.error(`Error in ticket command (${subcommand}): ${error}`);
     if (!interaction.replied && !interaction.deferred) {
-      await safeReply(interaction, { embeds: [errorEmbed("An error occurred while executing that command.")], ephemeral: true });
-    } else {
-      await interaction.editReply({ embeds: [errorEmbed("An error occurred while executing that command.")] }).catch(() => {});
+      await safeDeferReply(interaction, true);
+    }
+    try {
+      await safeEditReply(interaction, {
+        embeds: [errorEmbed("An error occurred while executing that command.")],
+        ephemeral: true,
+      });
+    } catch {
+      /* ignore */
     }
   }
+}
+
+/**
+ * For /ticket close: allow the ticket creator OR a bot manager.
+ * Defers the interaction on the deny path so the user always gets feedback.
+ */
+async function isTicketManagerOrCreator(
+  interaction: ChatInputCommandInteraction,
+): Promise<boolean> {
+  const { canManageBot } = await import("../../services/permissions");
+  if ((await canManageBot(interaction)).allowed) return true;
+
+  // Allow the ticket creator. Look up by channel id.
+  const { default: prisma } = await import("../../services/prisma");
+  const channel = interaction.channel;
+  if (!channel) return false;
+  const ticket = await prisma.ticket.findUnique({ where: { channelId: channel.id } });
+  if (ticket && ticket.creatorId === interaction.user.id) return true;
+
+  // Deny: deferReply + edit with ephemeral error.
+  await safeDeferReply(interaction, true);
+  await safeEditReply(interaction, {
+    embeds: [errorEmbed("Only the ticket creator or a server manager can close this ticket.")],
+    ephemeral: true,
+  });
+  return false;
 }
