@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionFromRequest } from "@/lib/middleware";
+import { checkGuildAccess } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(
@@ -7,10 +7,8 @@ export async function GET(
   { params }: { params: { guildId: string } }
 ) {
   try {
-    const session = await getSessionFromRequest(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await checkGuildAccess(req, params.guildId);
+    if (!auth.allowed) return auth.response;
 
     const { guildId } = params;
     const panels = await prisma.reactionRolePanel.findMany({
@@ -31,10 +29,8 @@ export async function POST(
   { params }: { params: { guildId: string } }
 ) {
   try {
-    const session = await getSessionFromRequest(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await checkGuildAccess(req, params.guildId);
+    if (!auth.allowed) return auth.response;
 
     const { guildId } = params;
     const body = await req.json();
