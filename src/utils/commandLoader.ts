@@ -1,15 +1,40 @@
-import { Client, Collection } from "discord.js";
+import { Client, Collection, SlashCommandBuilder } from "discord.js";
 import * as fs from "fs";
 import * as path from "path";
 import { logger } from "../services/logger";
 
-interface CommandModule {
-  data: { name: string };
-  execute: (...args: unknown[]) => unknown;
+interface CommandConfig {
+  data: SlashCommandBuilder | { name: string };
+  execute: (interaction: any, ...rest: any[]) => any;
 }
 
-export async function loadCommands(client: Client): Promise<void> {
-  (client as any).commands = new Collection<string, CommandModule>();
+type ImportResult =
+  | CommandConfig
+  | { default: CommandConfig }
+  | { data: CommandConfig["data"]; execute: CommandConfig["execute"] };
+
+function resolveCommand(mod: ImportResult): CommandConfig | null {
+  if (mod && typeof mod === "object") {
+    if ("default" in mod) {
+      const def = (mod as { default: unknown }).default;
+      if (
+        def &&
+        typeof def === "object" &&
+        "data" in def &&
+        "execute" in def
+      ) {
+        return def as CommandConfig;
+      }
+    }
+    if ("data" in mod && "execute" in mod) {
+      return mod as CommandConfig;
+    }
+  }
+  return null;
+}
+
+export async function loadCommands(client: Client): Promise<number> {
+  (client as any).commands = new Collection<string, CommandConfig>();
 
   const commandDirs = [
     "config",
@@ -20,6 +45,8 @@ export async function loadCommands(client: Client): Promise<void> {
     "giveaways",
     "roles",
   ];
+
+  let loaded = 0;
 
   for (const dir of commandDirs) {
     const dirPath = path.join(__dirname, "..", "commands", dir);
@@ -35,19 +62,29 @@ export async function loadCommands(client: Client): Promise<void> {
     for (const file of files) {
       try {
         const filePath = path.join(dirPath, file);
-        const command: CommandModule = await import(filePath);
+        const imported = (await import(filePath)) as ImportResult;
+        const command = resolveCommand(imported);
 
-        if (command.data?.name && typeof command.execute === "function") {
-          (client as any).commands.set(command.data.name, command);
-          logger.debug(`Loaded command: ${command.data.name}`);
-        } else {
-          logger.warn(`Invalid command file: ${file}`);
+        if (!command) {
+          logger.warn(`Invalid command file (no data/execute): ${file}`);
+          continue;
         }
+
+        const name = command.data?.name;
+        if (!name || typeof command.execute !== "function") {
+          logger.warn(`Invalid command file (missing name or execute): ${file}`);
+          continue;
+        }
+
+        (client as any).commands.set(name, command);
+        loaded++;
+        logger.info(`Loaded command: /${name} from ${dir}/${file}`);
       } catch (error) {
         logger.error(`Failed to load command ${file}: ${error}`);
       }
     }
   }
 
-  logger.info(`Loaded ${((client as any).commands as Collection<string, CommandModule>).size} commands`);
+  logger.info(`Loaded ${loaded} command(s) total`);
+  return loaded;
 }

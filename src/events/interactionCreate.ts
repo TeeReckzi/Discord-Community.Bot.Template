@@ -22,6 +22,9 @@ export default {
   name: Events.InteractionCreate,
   once: false,
   async execute(interaction: Interaction): Promise<void> {
+    const label = describeInteraction(interaction);
+    logger.info(`Received interaction: ${label}`);
+
     try {
       if (interaction.isChatInputCommand()) {
         await handleSlashCommand(interaction);
@@ -31,20 +34,55 @@ export default {
         await handleSelectMenu(interaction);
       } else if (interaction.isModalSubmit()) {
         await handleModalSubmit(interaction);
+      } else {
+        logger.debug(`Unhandled interaction type: ${interaction.type}`);
       }
     } catch (error) {
-      logger.error(`Unhandled error in interactionCreate: ${error}`);
+      logger.error(`Unhandled error in interactionCreate for ${label}: ${error}`);
+      await safeErrorReply(interaction, "An unexpected error occurred while handling this interaction.");
     }
   },
 };
 
+function describeInteraction(interaction: Interaction): string {
+  if (interaction.isChatInputCommand()) {
+    return `type=slash command=/${interaction.commandName}`;
+  }
+  if (interaction.isButton()) {
+    return `type=button customId=${interaction.customId}`;
+  }
+  if (interaction.isStringSelectMenu()) {
+    return `type=selectMenu customId=${interaction.customId}`;
+  }
+  if (interaction.isModalSubmit()) {
+    return `type=modalSubmit customId=${interaction.customId}`;
+  }
+  return `type=${interaction.type}`;
+}
+
+async function safeErrorReply(interaction: Interaction, message: string): Promise<void> {
+  try {
+    if (!interaction.isRepliable()) return;
+    const ephemeral = { ephemeral: true } as const;
+    if (interaction.deferred) {
+      await interaction.editReply({ content: message });
+    } else if (interaction.replied) {
+      await interaction.followUp({ content: message, ...ephemeral });
+    } else {
+      await interaction.reply({ content: message, ...ephemeral });
+    }
+  } catch (replyError) {
+    logger.error(`Failed to send error reply: ${replyError}`);
+  }
+}
+
 async function handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const command = (interaction.client as any).commands?.get(interaction.commandName);
   if (!command) {
-    logger.warn(`Unknown command: ${interaction.commandName}`);
+    logger.warn(`Unknown command received: /${interaction.commandName}`);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: "This command is not recognized.",
+        content: `Unknown command: \`/${interaction.commandName}\``,
         ephemeral: true,
       });
     }
@@ -52,19 +90,11 @@ async function handleSlashCommand(interaction: ChatInputCommandInteraction): Pro
   }
 
   try {
+    logger.info(`Executing /${interaction.commandName} for user=${interaction.user.id} guild=${interaction.guildId}`);
     await command.execute(interaction);
   } catch (error) {
-    logger.error(`Error executing command ${interaction.commandName}: ${error}`);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: "There was an error executing this command.",
-        ephemeral: true,
-      });
-    } else {
-      await interaction.editReply({
-        content: "There was an error executing this command.",
-      });
-    }
+    logger.error(`Error executing /${interaction.commandName}: ${error}`);
+    await safeErrorReply(interaction, "There was an error executing this command.");
   }
 }
 
