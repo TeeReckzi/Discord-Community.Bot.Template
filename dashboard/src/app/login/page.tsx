@@ -8,14 +8,24 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const hasSession = document.cookie
-      .split('; ')
-      .some((cookie) => cookie.startsWith('aethoria_session='));
-    if (hasSession) {
-      router.replace('/guilds');
-    } else {
-      setChecking(false);
-    }
+    // The session cookie is httpOnly so document.cookie can't see it.
+    // Ask the server whether we have a valid session.
+    let cancelled = false;
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          router.replace('/guilds');
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (checking) {

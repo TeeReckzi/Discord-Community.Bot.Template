@@ -1,6 +1,7 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
+import * as http from "http";
 import client from "./client";
 import { logger } from "./services/logger";
 import { stopAll } from "./services/scheduler";
@@ -8,9 +9,14 @@ import { loadCommands } from "./utils/commandLoader";
 import { loadEvents } from "./utils/eventLoader";
 import prisma from "./services/prisma";
 
+let healthServer: http.Server | null = null;
+
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down gracefully...`);
   stopAll();
+  if (healthServer) {
+    await new Promise<void>((resolve) => healthServer!.close(() => resolve()));
+  }
   try {
     client.destroy();
   } catch (e) {
@@ -33,6 +39,23 @@ process.on("uncaughtException", (err) => {
   logger.error(`Uncaught exception: ${err}`);
 });
 
+function startHealthServer(): void {
+  const port = parseInt(process.env.HEALTH_PORT ?? "8080", 10);
+  healthServer = http.createServer((req, res) => {
+    if (req.url === "/api/health" || req.url === "/health") {
+      const ready = !!client.user && client.isReady();
+      res.writeHead(ready ? 200 : 503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: ready ? "ok" : "starting", uptime: process.uptime() }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  healthServer.listen(port, () => {
+    logger.info(`Healthcheck server listening on :${port}/api/health`);
+  });
+}
+
 async function main(): Promise<void> {
   const token = process.env.DISCORD_TOKEN;
   if (!token) {
@@ -44,6 +67,8 @@ async function main(): Promise<void> {
 
   await loadCommands(client);
   await loadEvents(client);
+
+  startHealthServer();
 
   await client.login(token);
 }

@@ -72,6 +72,23 @@ prisma/
 - Discord Bot Token & Application
 - Discord OAuth2 Application (for dashboard)
 
+### Discord Bot Setup (in the Developer Portal)
+
+1. Create an application at https://discord.com/developers/applications
+2. **Bot tab** → enable the **Server Members Intent** (privileged).
+   Required — the bot uses `guildMemberAdd` and `guildMemberRemove`
+   events for welcome/leave messages. Without this, those events
+   silently never fire.
+3. **Bot tab** → copy the bot token into `DISCORD_TOKEN`
+4. **OAuth2 → URL Generator**:
+   - Scopes: `bot`, `applications.commands`
+   - Bot permissions: at minimum `View Channels`, `Send Messages`,
+     `Manage Channels`, `Manage Messages`, `Embed Links`, `Read
+     Message History`, `Add Reactions`, `Use Slash Commands`
+5. **OAuth2 → Redirects**: add `<dashboard-url>/api/auth/callback`
+   (e.g. `http://localhost:3000/api/auth/callback` for dev)
+6. Copy **Client ID** and **Client Secret** into the dashboard env.
+
 ## Local Development
 
 1. **Clone and install**

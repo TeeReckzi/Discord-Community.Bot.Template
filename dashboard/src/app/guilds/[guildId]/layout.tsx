@@ -134,7 +134,7 @@ export default async function GuildLayout({
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar guildId={params.guildId} guildName={params.guildId} />
+      <Sidebar guildId={params.guildId} guildName={guild.name} />
       <main style={{ flex: 1, padding: "2rem", overflow: "auto" }}>{children}</main>
     </div>
   );
