@@ -1,6 +1,7 @@
-import { Client, ButtonInteraction, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Colors } from "discord.js";
+import { Client, ButtonInteraction, TextChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import prisma from "../../services/prisma";
 import { safeDeferUpdate, safeFollowUp } from "../../services/interactions";
+import { getBrandColor, BRAND_FOOTER_TEXT } from "../../services/embeds";
 import { logger } from "../../services/logger";
 
 export async function handleGiveawayEntry(interaction: ButtonInteraction, giveawayId: string): Promise<void> {
@@ -62,11 +63,16 @@ export async function endGiveaway(client: Client, giveawayId: string): Promise<s
       if (channel) {
         const message = await channel.messages.fetch(giveaway.messageId);
         if (message) {
+          // Use the guild's brand color instead of hardcoded Gold, so the
+          // ended embed stays on-brand. Title is plain, no double-emoji.
+          const color = await getBrandColor(giveaway.guildId);
           const embed = EmbedBuilder.from(message.embeds[0] ?? new EmbedBuilder())
-            .setColor(Colors.Gold);
+            .setColor(color)
+            .setFooter({ text: BRAND_FOOTER_TEXT })
+            .setTimestamp();
 
           if (winnerIds.length > 0) {
-            embed.setTitle("🎉 Giveaway Ended! 🎉");
+            embed.setTitle("🎉 Giveaway Ended");
             embed.setDescription(`**Prize:** ${giveaway.prize}`);
             embed.spliceFields(0, embed.data.fields?.length ?? 0);
             embed.addFields(
