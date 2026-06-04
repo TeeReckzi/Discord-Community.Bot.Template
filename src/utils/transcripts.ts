@@ -1,25 +1,44 @@
 import { TextChannel, Message, Collection } from "discord.js";
 
-const TRANSCRIPT_FETCH_LIMIT = 100;
+const FETCH_BATCH_SIZE = 100;
+const MAX_MESSAGES = 10_000;
 
 export async function generateTranscript(channel: TextChannel): Promise<string> {
-  const messages: Collection<string, Message> = await channel.messages.fetch({
-    limit: TRANSCRIPT_FETCH_LIMIT,
-  });
+  const allMessages: Message[] = [];
+  let lastMessageId: string | undefined;
+
+  while (allMessages.length < MAX_MESSAGES) {
+    const fetchOptions: { limit: number; before?: string } = {
+      limit: FETCH_BATCH_SIZE,
+    };
+    if (lastMessageId) {
+      fetchOptions.before = lastMessageId;
+    }
+
+    const batch: Collection<string, Message> = await channel.messages.fetch(fetchOptions);
+
+    if (batch.size === 0) break;
+
+    allMessages.push(...batch.values());
+
+    if (batch.size < FETCH_BATCH_SIZE) break;
+
+    lastMessageId = batch.lastKey();
+  }
 
   const transcriptLines: string[] = [
     `# Ticket Transcript - ${channel.name}`,
     `# Guild: ${channel.guild.name}`,
     `# Date: ${new Date().toISOString()}`,
-    `# Messages: ${messages.size}`,
+    `# Messages: ${allMessages.length}${allMessages.length >= MAX_MESSAGES ? " (truncated)" : ""}`,
     "",
     "---",
     "",
   ];
 
-  const sorted = messages.reverse();
+  const sorted = allMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
-  for (const [, message] of sorted) {
+  for (const message of sorted) {
     const author = message.author.tag;
     const timestamp = message.createdAt.toISOString();
     const content = message.content || "[no text content]";

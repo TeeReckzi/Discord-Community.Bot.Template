@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model GuildConfig {
+  id         String   @id @default(uuid())
+  guildId    String   @unique
+  logChannel String?
+  brandColor String?  @default("#5865F2")
+  staffRole  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  ticketPanels TicketPanel[]
+}
+
+model TicketCategory {
+  id        String   @id @default(uuid())
+  guildId   String
+  name      String
+  categoryId String?
+  staffRole String?
+  createdAt DateTime @default(now())
+
+  tickets Ticket[]
+  panels  TicketPanel[]
+}
+
+model TicketPanel {
+  id          String   @id @default(uuid())
+  guildId     String
+  channelId   String
+  messageId   String?
+  title       String
+  description String?
+  /// "button" (single-category) or "dropdown" (multi-category)
+  mode        String   @default("button")
+  categoryId  String?
+  createdById String?
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guildConfig GuildConfig     @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+  category    TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([guildId])
+  @@index([categoryId])
+}
+
+model Ticket {
+  id         String   @id @default(uuid())
+  guildId    String
+  channelId  String   @unique
+  creatorId  String
+  categoryId String?
+  status     String   @default("open")
+  subject    String?
+  createdAt  DateTime @default(now())
+  closedAt   DateTime?
+  closedBy   String?
+  transcript String?
+
+  category TicketCategory? @relation(fields: [categoryId], references: [id])
+}
+
+model Giveaway {
+  id          String   @id @default(uuid())
+  guildId     String
+  channelId   String
+  messageId   String?
+  prize       String
+  winnerCount Int      @default(1)
+  duration    String
+  endsAt      DateTime
+  ended       Boolean  @default(false)
+  hostedBy    String
+  winnerIds   String?
+  processingStartedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  entries GiveawayEntry[]
+}
+
+model GiveawayEntry {
+  id         String   @id @default(uuid())
+  giveawayId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  giveaway Giveaway @relation(fields: [giveawayId], references: [id])
+
+  @@unique([giveawayId, userId])
+}
+
+model Poll {
+  id        String   @id @default(uuid())
+  guildId   String
+  channelId String
+  messageId String?
+  question  String
+  options   String
+  endsAt    DateTime?
+  ended     Boolean  @default(false)
+  processingStartedAt DateTime?
+  createdAt DateTime @default(now())
+
+  votes PollVote[]
+}
+
+model PollVote {
+  id     String @id @default(uuid())
+  pollId String
+  userId String
+  option Int
+
+  poll Poll @relation(fields: [pollId], references: [id])
+
+  @@unique([pollId, userId])
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  guildId   String
+  channelId String
+  messageId String?
+  content   String
+  embed     String?
+  scheduledAt DateTime?
+  published  Boolean  @default(false)
+  processingStartedAt DateTime?
+  createdAt  DateTime @default(now())
+}
+
+model WelcomeLeaveConfig {
+  id          String @id @default(uuid())
+  guildId     String
+  type        String
+  channelId   String?
+  message     String  @default("Welcome {user} to {server}!")
+  embedEnabled Boolean @default(false)
+  embedColor  String? @default("#5865F2")
+  embedTitle  String?
+
+  @@unique([guildId, type])
+}
+
+model ReactionRolePanel {
+  id        String   @id @default(uuid())
+  guildId   String
+  channelId String
+  messageId String?
+  title     String?
+  style     String   @default("button")
+  createdAt DateTime @default(now())
+
+  options ReactionRoleOption[]
+}
+
+model ReactionRoleOption {
+  id        String @id @default(uuid())
+  panelId   String
+  roleId    String
+  label     String
+  emoji     String?
+  style     String  @default("PRIMARY")
+  createdAt DateTime @default(now())
+
+  panel ReactionRolePanel @relation(fields: [panelId], references: [id])
+}
+
+model SocialFeedConfig {
+  id        String   @id @default(uuid())
+  guildId   String
+  channelId String
+  platform  String
+  channelId_or_username String
+  lastChecked DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([guildId, platform, channelId_or_username])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  guildId   String
+  action    String
+  moderator String
+  target    String?
+  reason    String?
+  details   String?
+  createdAt DateTime @default(now())
+}

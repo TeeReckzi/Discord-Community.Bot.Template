@@ -14,7 +14,7 @@ let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
 let sweeperIntervalId: ReturnType<typeof setInterval> | null = null;
 const TICK_MS = 5_000;
 const SWEEP_MS = 60_000;
-const STALE_LOCK_MINUTES = 5;
+const STALE_LOCK_MINUTES = 15;
 
 export function registerHeartbeat(id: string, callback: Heartbeat): void {
   if (heartbeats.find((h) => h.id === id)) {

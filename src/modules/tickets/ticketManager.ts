@@ -242,6 +242,14 @@ export async function handlePanel(
   // sent, log loudly but don't fail the user-facing command — the panel
   // is already visible, the dashboard just won't be able to re-create it.
   try {
+    // Ensure GuildConfig exists to satisfy TicketPanel FK constraint.
+    // This is a no-op if the row already exists.
+    await prisma.guildConfig.upsert({
+      where: { guildId: interaction.guild.id },
+      update: {},
+      create: { guildId: interaction.guild.id },
+    });
+
     const panel = await prisma.ticketPanel.create({
       data: {
         guildId: interaction.guild.id,
