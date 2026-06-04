@@ -149,6 +149,14 @@ export async function handleSetup(
   const staffRole = interaction.options.getRole("staff-role");
   const category = interaction.options.getChannel("category");
 
+  if (category && category.type !== ChannelType.GuildCategory) {
+    await safeReply(interaction, {
+      embeds: [errorEmbed("Please select a Discord category channel, not a text channel.")],
+      ephemeral: true,
+    });
+    return;
+  }
+
   const existing = await prisma.ticketCategory.findFirst({
     where: { guildId: interaction.guild.id, name },
   });
@@ -712,10 +720,27 @@ export async function handleTicketModalSubmit(
 
     const staffRoleId = category.staffRole ?? (await getGuildStaffRole(guild.id));
 
+    let parentCategoryId: string | undefined = undefined;
+    if (category.categoryId) {
+      try {
+        const parentChannel = await guild.channels.fetch(category.categoryId);
+        if (parentChannel && parentChannel.type === ChannelType.GuildCategory && parentChannel.guildId === guild.id) {
+          parentCategoryId = category.categoryId;
+        } else {
+          logger.warn(
+            `Invalid parent category for ticket creation: guildId=${guild.id}, configuredCategoryId=${category.categoryId}, ` +
+            `actualType=${parentChannel?.type ?? "null"}, exists=${!!parentChannel}`
+          );
+        }
+      } catch (error) {
+        logger.warn(`Failed to fetch parent category ${category.categoryId}: ${error}`);
+      }
+    }
+
     const channel = await guild.channels.create({
       name: channelName,
       type: ChannelType.GuildText,
-      parent: category.categoryId ?? undefined,
+      parent: parentCategoryId,
       topic: `Ticket created by ${member.user.tag} | Category: ${category.name}${subject ? ` | Subject: ${subject}` : ""}`,
     });
 

@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  ChannelType,
 } from "discord.js";
 
 import { safeDeferReply, safeEditReply } from "../../services/interactions";
@@ -38,6 +39,7 @@ export const data = new SlashCommandBuilder()
         opt
           .setName("category")
           .setDescription("Discord category to create tickets under")
+          .addChannelTypes(ChannelType.GuildCategory)
           .setRequired(false),
       ),
   )
