@@ -104,9 +104,22 @@ export default function Sidebar({ guildId, guildName }: SidebarProps) {
           borderTop: '1px solid rgba(255, 255, 255, 0.06)',
           fontSize: '0.75rem',
           color: 'var(--text-secondary)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem',
         }}
       >
-        Aethoria&apos;s Keep
+        <div>Aethoria&apos;s Keep</div>
+        <a
+          href="/api/auth/logout"
+          style={{
+            color: 'var(--text-secondary)',
+            textDecoration: 'none',
+            fontSize: '0.75rem',
+          }}
+        >
+          Sign out
+        </a>
       </div>
     </aside>
   );

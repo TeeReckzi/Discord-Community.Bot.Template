@@ -5,8 +5,8 @@ import {
   GuildTextBasedChannel,
 } from "discord.js";
 import prisma from "../../services/prisma";
-import { requireStaff } from "../../services/permissions";
-import { safeDeferReply, safeEditReply } from "../../services/interactions";
+import { safeEditReply } from "../../services/interactions";
+import { requireBotManager } from "../../services/permissions";
 import { brandedEmbed, successEmbed, errorEmbed } from "../../services/embeds";
 
 export const data = new SlashCommandBuilder()
@@ -39,7 +39,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  await safeDeferReply(interaction);
+  if (!(await requireBotManager(interaction))) return;
 
   const guildId = interaction.guildId;
   if (!guildId) {
@@ -48,9 +48,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     });
     return;
   }
-
-  const isStaff = await requireStaff(interaction);
-  if (!isStaff) return;
 
   const subcommand = interaction.options.getSubcommand();
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface Guild {
   id: string;
@@ -11,7 +11,39 @@ interface Guild {
   permissions: number;
 }
 
+function BannerError() {
+  const search = useSearchParams();
+  const reason = search.get('error');
+  if (!reason) return null;
+  const messages: Record<string, string> = {
+    not_in_guild: "You're not a member of that server, or you don't have access to it.",
+    no_permission:
+      "You need Administrator, Manage Server, or the configured staff role to manage this server.",
+  };
+  const text = messages[reason] ?? `Access denied (${reason}).`;
+  return (
+    <div
+      className="card"
+      style={{
+        marginBottom: '1.5rem',
+        borderColor: 'var(--danger)',
+        color: 'var(--danger)',
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
 export default function GuildsPage() {
+  return (
+    <Suspense fallback={null}>
+      <GuildsPageInner />
+    </Suspense>
+  );
+}
+
+function GuildsPageInner() {
   const router = useRouter();
   const [guilds, setGuilds] = useState<Guild[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +106,8 @@ export default function GuildsPage() {
           Logout
         </a>
       </div>
+
+      <BannerError />
 
       {guilds.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
