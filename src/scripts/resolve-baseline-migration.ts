@@ -1,15 +1,14 @@
 /**
- * Resolves baseline migration for databases created via `prisma db push`.
+ * ONE-TIME FIX: Resolved baseline migration for Railway DB created via `prisma db push`.
  *
- * Problem: Railway DB was initially created with `prisma db push`, which
- * creates all tables but doesn't create the `_prisma_migrations` table.
- * When `prisma migrate deploy` runs, it tries to CREATE TABLE on existing
- * tables and fails.
+ * This script was used to mark the baseline migration as applied on databases
+ * that were created via `prisma db push` (which doesn't create `_prisma_migrations`).
  *
- * Solution: Check if `_prisma_migrations` exists. If not, mark the baseline
- * migration as already applied using `prisma migrate resolve --applied`.
+ * Status: Already executed on Railway. No longer needed in the start script.
+ * Kept for reference only. Do not re-run.
  *
- * This script is idempotent and safe to run multiple times.
+ * The incremental migration `20260604020000_add_ticket_panel_if_missing` now
+ * handles the missing TicketPanel table safely.
  */
 
 import { PrismaClient } from "@prisma/client";

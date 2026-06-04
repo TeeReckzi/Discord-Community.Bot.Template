@@ -56,6 +56,30 @@ function startHealthServer(): void {
   });
 }
 
+async function verifyDatabaseSchema(): Promise<void> {
+  const requiredTables = ["TicketPanel"];
+
+  const result = await prisma.$queryRaw<Array<{ table_name: string }>>`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = ANY(${requiredTables})
+  `;
+
+  const existingTables = new Set(result.map((r) => r.table_name));
+  const missingTables = requiredTables.filter((t) => !existingTables.has(t));
+
+  if (missingTables.length > 0) {
+    logger.error(
+      `FATAL: Required tables missing from database: ${missingTables.join(", ")}. ` +
+        `Run 'npx prisma migrate deploy' to apply pending migrations.`
+    );
+    process.exit(1);
+  }
+
+  logger.info("Database schema verification passed: all required tables exist");
+}
+
 async function main(): Promise<void> {
   const token = process.env.DISCORD_TOKEN;
   if (!token) {
@@ -65,6 +89,7 @@ async function main(): Promise<void> {
 
   logger.info("Starting Aethoria's Keep Bot...");
 
+  await verifyDatabaseSchema();
   await loadCommands(client);
   await loadEvents(client);
 
