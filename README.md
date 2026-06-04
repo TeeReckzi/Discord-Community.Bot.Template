@@ -105,26 +105,81 @@ prisma/
    # Edit .env with your values
    ```
 
-3. **Generate Prisma client and push schema**
-   ```bash
-   npm run prisma:generate
-   npm run prisma:push
-   ```
+ 3. **Generate Prisma client and run migrations**
+    ```bash
+    npm run prisma:generate
+    npm run prisma:migrate:deploy
+    ```
 
-4. **Deploy slash commands**
-   ```bash
-   npm run commands:deploy
-   ```
+ 4. **Deploy slash commands**
+    ```bash
+    npm run commands:deploy
+    ```
 
-5. **Run the bot**
-   ```bash
-   npm run dev
-   ```
+ 5. **Run the bot**
+    ```bash
+    npm run dev
+    ```
 
-6. **Run the dashboard** (in another terminal)
-   ```bash
-   cd dashboard && npm run dev
-   ```
+ 6. **Run the dashboard** (in another terminal)
+    ```bash
+    cd dashboard && npm run dev
+    ```
+
+## Database Migrations
+
+This project uses **Prisma Migrate** for safe, version-controlled database schema changes. Migrations are SQL files stored in `prisma/migrations/` and are applied in order.
+
+### Local Development
+
+**First-time setup:**
+```bash
+npm run prisma:generate
+npm run prisma:migrate:deploy
+```
+
+**After pulling schema changes:**
+```bash
+npm run prisma:migrate:deploy
+```
+
+**Creating a new migration:**
+```bash
+# 1. Edit prisma/schema.prisma
+# 2. Generate the migration file (does NOT apply it)
+npm run prisma:migrate:create --name describe_your_change
+# 3. Review the generated SQL in prisma/migrations/
+# 4. Apply it locally
+npm run prisma:migrate:deploy
+```
+
+### Production Deployment
+
+**Automatic (recommended):**
+The `npm run start` script automatically runs `prisma migrate deploy` before starting the bot. This ensures the database schema is always up-to-date on deploy.
+
+**Manual:**
+```bash
+# Apply pending migrations without starting the bot
+npm run prisma:migrate:deploy
+```
+
+### Railway Deployment
+
+Railway automatically runs `npm run start` on deploy, which includes `prisma migrate deploy`. No additional configuration needed.
+
+**To manually apply migrations on Railway:**
+```bash
+railway run npm run prisma:migrate:deploy
+```
+
+### Important Notes
+
+- **Never use `prisma db push --accept-data-loss` in production.** This can delete data.
+- **Always review migration SQL** before committing. Check `prisma/migrations/*/migration.sql`.
+- **Migrations are additive by default.** Destructive changes (dropping columns/tables) require explicit `DROP` statements.
+- **Migration history is version-controlled.** Never delete files in `prisma/migrations/` after they've been applied.
+- **Rollback is manual.** If a migration fails, you may need to manually revert changes or restore from backup.
 
 ## Scripts
 
@@ -132,12 +187,16 @@ prisma/
 |---------|-------------|
 | `npm run dev` | Start bot in development mode with hot reload |
 | `npm run build` | Compile TypeScript to JavaScript |
-| `npm run start` | Start bot in production mode |
+| `npm run start` | Run migrations and start bot in production mode |
+| `npm run start:migrate` | Alias for `npm run start` |
 | `npm run typecheck` | Run TypeScript type checking |
 | `npm run prisma:generate` | Generate Prisma client |
-| `npm run prisma:migrate` | Run database migrations |
-| `npm run prisma:push` | Push schema to database |
+| `npm run prisma:migrate` | Create and apply migrations (dev) |
+| `npm run prisma:migrate:deploy` | Apply pending migrations (prod) |
+| `npm run prisma:migrate:create` | Create migration file without applying |
+| `npm run prisma:studio` | Open Prisma Studio GUI |
 | `npm run commands:deploy` | Register slash commands with Discord |
+| `npm run commands:sync-permissions` | Sync staff role permissions |
 
 ## Deployment to Railway
 
@@ -150,7 +209,9 @@ prisma/
    - `CLIENT_ID` - Your Discord application ID
    - `DATABASE_URL` - Railway PostgreSQL connection string (auto-provided)
 4. Build command: `npm install && npm run prisma:generate && npm run build`
-5. Start command: `npm run start`
+5. Start command: `npm run start` (automatically runs `prisma migrate deploy`)
+
+**Database migrations run automatically on deploy.** The `npm run start` script applies pending migrations before starting the bot.
 
 ### Dashboard Service
 
@@ -210,11 +271,11 @@ cp .env.example .env
 # Edit .env with your Discord token, client ID, and database URL
 
 # Set up database
-npx prisma generate
-npx prisma db push
+npm run prisma:generate
+npm run prisma:migrate:deploy
 
 # Deploy slash commands
-npx tsx src/deploy-commands.ts
+npm run commands:deploy
 
 # Run bot
 npm run dev
