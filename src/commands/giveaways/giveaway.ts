@@ -10,8 +10,8 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import prisma from "../../services/prisma";
-import { requireStaff } from "../../services/permissions";
-import { safeDeferReply, safeEditReply, safeFollowUp } from "../../services/interactions";
+import { requireBotManager } from "../../services/permissions";
+import { safeEditReply, safeFollowUp } from "../../services/interactions";
 import { brandedEmbed, successEmbed, errorEmbed } from "../../services/embeds";
 import { logger } from "../../services/logger";
 import { parseDuration, formatRemaining } from "../../utils/duration";
@@ -83,16 +83,13 @@ async function findGiveawayByMessage(input: string, guildId: string) {
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  await safeDeferReply(interaction);
+  if (!(await requireBotManager(interaction))) return;
 
   const guildId = interaction.guildId;
   if (!guildId) {
     await safeEditReply(interaction, { embeds: [errorEmbed("This command can only be used in a server.")] });
     return;
   }
-
-  const isStaff = await requireStaff(interaction);
-  if (!isStaff) return;
 
   const subcommand = interaction.options.getSubcommand();
 

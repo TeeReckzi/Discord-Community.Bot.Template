@@ -7,7 +7,8 @@ import {
   TextChannel,
 } from "discord.js";
 import prisma from "../../services/prisma";
-import { safeDeferReply, safeEditReply } from "../../services/interactions";
+import { safeEditReply } from "../../services/interactions";
+import { requireBotManager } from "../../services/permissions";
 import { brandedEmbed, successEmbed, errorEmbed } from "../../services/embeds";
 import { parseDuration, formatRemaining } from "../../utils/duration";
 
@@ -36,7 +37,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  await safeDeferReply(interaction, true);
+  if (!(await requireBotManager(interaction))) return;
 
   const guildId = interaction.guildId;
   if (!guildId) {

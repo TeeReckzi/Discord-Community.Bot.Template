@@ -61,9 +61,18 @@ export default function TicketsPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem' }}>Ticket Settings</h1>
-        <div className="card" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Active: </span>
-          <strong>{data?.activeCount ?? 0}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <a
+            href={`/guilds/${params.guildId}/tickets/panels`}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.85rem' }}
+          >
+            Manage Panels
+          </a>
+          <div className="card" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Active: </span>
+            <strong>{data?.activeCount ?? 0}</strong>
+          </div>
         </div>
       </div>
 

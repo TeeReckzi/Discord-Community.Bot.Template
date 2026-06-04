@@ -4,7 +4,7 @@ import {
   TextChannel,
 } from "discord.js";
 import { safeDeferReply, safeReply } from "../../services/interactions";
-import { requireStaff } from "../../services/permissions";
+import { requireBotManager } from "../../services/permissions";
 import { successEmbed, errorEmbed } from "../../services/embeds";
 import { logger } from "../../services/logger";
 import { parseDuration } from "../../utils/duration";
@@ -52,9 +52,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  await safeDeferReply(interaction);
-
-  if (!(await requireStaff(interaction))) return;
+  if (!(await requireBotManager(interaction))) return;
 
   const subcommand = interaction.options.getSubcommand();
 

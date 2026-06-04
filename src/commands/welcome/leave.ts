@@ -8,19 +8,19 @@ import { requireBotManager } from "../../services/permissions";
 import { successEmbed } from "../../services/embeds";
 
 export const data = new SlashCommandBuilder()
-  .setName("welcome")
-  .setDescription("Configure welcome messages")
+  .setName("leave")
+  .setDescription("Configure leave messages")
   .addSubcommand((sub) =>
     sub
       .setName("setup")
-      .setDescription("Set up welcome messages")
+      .setDescription("Set up leave messages")
       .addChannelOption((opt) =>
-        opt.setName("channel").setDescription("Welcome channel").setRequired(true),
+        opt.setName("channel").setDescription("Leave channel").setRequired(true),
       )
       .addStringOption((opt) =>
         opt
           .setName("message")
-          .setDescription("Welcome message (use {user}, {server}, {memberCount})")
+          .setDescription("Leave message (use {user}, {server}, {memberCount})")
           .setRequired(false),
       )
       .addBooleanOption((opt) =>
@@ -48,10 +48,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const embed = interaction.options.getBoolean("embed");
   const embedTitle = interaction.options.getString("embed-title");
 
-  const defaultMsg = "Welcome {user} to {server}!";
+  const defaultMsg = "{user} has left {server}!";
 
   await prisma.welcomeLeaveConfig.upsert({
-    where: { guildId_type: { guildId: interaction.guildId!, type: "welcome" } },
+    where: { guildId_type: { guildId: interaction.guildId!, type: "leave" } },
     update: {
       channelId: channel.id,
       message: message ?? defaultMsg,
@@ -60,7 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     },
     create: {
       guildId: interaction.guildId!,
-      type: "welcome",
+      type: "leave",
       channelId: channel.id,
       message: message ?? defaultMsg,
       embedEnabled: embed ?? false,
@@ -69,6 +69,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   });
 
   await interaction.editReply({
-    embeds: [successEmbed(`Welcome messages configured in ${channel}.`)],
+    embeds: [successEmbed(`Leave messages configured in ${channel}.`)],
   });
 }

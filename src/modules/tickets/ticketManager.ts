@@ -23,7 +23,8 @@ import prisma from "../../services/prisma";
 import { logger } from "../../services/logger";
 import { generateTranscript, transcriptToBuffer, transcriptFilename } from "../../utils/transcripts";
 import { safeDeferReply, safeDeferUpdate, safeReply, safeEditReply, safeFollowUp } from "../../services/interactions";
-import { brandedEmbed, successEmbed, errorEmbed } from "../../services/embeds";
+import { brandedEmbed, successEmbed, errorEmbed, getBrandColor } from "../../services/embeds";
+import { buildPanelEmbed, buildPanelComponents, PanelMode } from "./panelBuilder";
 
 const TICKET_PREFIX = "ticket-";
 
@@ -197,21 +198,81 @@ export async function handlePanel(
   }
 
   const title = interaction.options.getString("title", true);
-  const description = interaction.options.getString("description") ?? "Click the button below to create a ticket.";
+  const description = interaction.options.getString("description");
 
-  const embed = await brandedEmbed(interaction.guild.id);
-  embed.setTitle(title);
-  embed.setDescription(description);
+  // Look up categories to pick the right mode. The /ticket panel command
+  // also persists a TicketPanel row so the dashboard can list, recreate,
+  // and manage it. The panel's mode is derived from the category count.
+  const categories = await prisma.ticketCategory.findMany({
+    where: { guildId: interaction.guild.id },
+    select: { id: true, name: true },
+  });
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("ticket_create")
-      .setLabel("Create Ticket")
-      .setStyle(ButtonStyle.Primary)
-      .setEmoji("🎫"),
-  );
+  if (categories.length === 0) {
+    await safeReply(interaction, {
+      embeds: [errorEmbed("Set up at least one ticket category first with `/ticket setup`.")],
+      ephemeral: true,
+    });
+    return;
+  }
 
-  await safeReply(interaction, { embeds: [embed], components: [row] });
+  const mode: "button" | "dropdown" = categories.length === 1 ? "button" : "dropdown";
+  const boundCategoryId = mode === "button" ? categories[0].id : null;
+
+  const color = await getBrandColor(interaction.guild.id);
+  const panelInput = {
+    title,
+    description,
+    mode,
+    categories,
+    boundCategoryId,
+    color,
+  };
+
+  const embed = buildPanelEmbed(panelInput);
+  const rows = buildPanelComponents(panelInput);
+
+  // requireBotManager deferred the reply already; send the panel
+  // message into the channel via editReply (the slash command's reply
+  // IS the panel message).
+  const sentMessage = await safeEditReply(interaction, { embeds: [embed], components: rows });
+  const messageId = sentMessage?.id ?? null;
+
+  // Persist the panel. If the DB write fails after the message is already
+  // sent, log loudly but don't fail the user-facing command — the panel
+  // is already visible, the dashboard just won't be able to re-create it.
+  try {
+    const panel = await prisma.ticketPanel.create({
+      data: {
+        guildId: interaction.guild.id,
+        channelId: interaction.channel.id,
+        messageId,
+        title,
+        description: description ?? null,
+        mode,
+        categoryId: boundCategoryId,
+        createdById: interaction.user.id,
+        archived: false,
+      },
+    });
+
+    await createAuditLog(
+      interaction.guild.id,
+      "ticket_panel_create",
+      interaction.user.id,
+      panel.id,
+      null,
+      `Created ticket panel "${title}" in <#${interaction.channel.id}> (${mode})`,
+    );
+
+    logger.info(
+      `TicketPanel ${panel.id} persisted for guild ${interaction.guild.id} (message ${messageId ?? "unknown"})`,
+    );
+  } catch (error) {
+    logger.error(
+      `TicketPanel DB save FAILED for guild ${interaction.guild.id} (panel message already sent): ${error}`,
+    );
+  }
 }
 
 // ─── Close ──────────────────────────────────────────────────
@@ -725,4 +786,254 @@ export async function handleTicketModalSubmit(
     logger.error(`Failed to create ticket: ${error}`);
     await safeEditReply(interaction, { embeds: [errorEmbed("Failed to create the ticket. Please try again.")] });
   }
+}
+
+// ─── Panel helpers (used by both bot and dashboard recreate API) ─
+
+/**
+ * Build + send a fresh panel message for an existing TicketPanel row.
+ * Used by the dashboard's recreate endpoint and the /ticket panel command
+ * (after the row is created).
+ *
+ * - Fetches the panel and its bound category (if any)
+ * - Resolves the brand color from GuildConfig
+ * - Uses the same shared builder as the original command
+ * - Sends the new message via `client` (Discord client) or `sendViaRest`
+ *   for environments that only have a bot token
+ *
+ * Returns the new messageId on success. Throws on failure.
+ */
+export interface ResentPanel {
+  messageId: string;
+  channelId: string;
+}
+
+export interface PanelSendClient {
+  channels: {
+    fetch: (id: string) => Promise<{
+      isTextBased: () => boolean;
+      send: (payload: any) => Promise<{ id: string }>;
+    } | null>;
+  };
+}
+
+export async function rebuildAndSendPanel(
+  panel: {
+    id: string;
+    guildId: string;
+    title: string;
+    description: string | null;
+    mode: string;
+    categoryId: string | null;
+  },
+  options: {
+    targetChannelId: string;
+    client?: PanelSendClient;
+    botToken?: string;
+  },
+): Promise<ResentPanel> {
+  const channelId = options.targetChannelId;
+  if (!channelId) {
+    throw new Error("No target channel provided");
+  }
+
+  const categories = await prisma.ticketCategory.findMany({
+    where: { guildId: panel.guildId },
+    select: { id: true, name: true },
+  });
+
+  // Determine which categories to expose. For button mode, only the
+  // bound category (or a fallback to the first). For dropdown, all.
+  const mode: PanelMode = panel.mode === "dropdown" ? "dropdown" : "button";
+  let exposedCategories = categories;
+  if (mode === "button") {
+    const boundId = panel.categoryId;
+    if (boundId) {
+      const bound = categories.find((c) => c.id === boundId);
+      if (bound) exposedCategories = [bound];
+    } else if (categories.length > 0) {
+      exposedCategories = [categories[0]];
+    }
+  }
+
+  const color = await getBrandColor(panel.guildId);
+  const embed = buildPanelEmbed({
+    title: panel.title,
+    description: panel.description,
+    mode,
+    categories: exposedCategories,
+    boundCategoryId: panel.categoryId,
+    color,
+  });
+  const rows = buildPanelComponents({
+    title: panel.title,
+    description: panel.description,
+    mode,
+    categories: exposedCategories,
+    boundCategoryId: panel.categoryId,
+    color,
+  });
+
+  let sentMessageId: string;
+  if (options.client) {
+    const channel = await options.client.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased()) {
+      throw new Error(`Target channel ${channelId} not found or not text-based`);
+    }
+    const message = await channel.send({ embeds: [embed], components: rows });
+    sentMessageId = message.id;
+  } else if (options.botToken) {
+    const url = `https://discord.com/api/v10/channels/${channelId}/messages`;
+    const body = {
+      embeds: [embed.toJSON()],
+      components: rows.map((r) => r.toJSON()),
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${options.botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Discord API send failed (${res.status}): ${text}`);
+    }
+    const json = (await res.json()) as { id: string };
+    sentMessageId = json.id;
+  } else {
+    throw new Error("Either client or botToken must be provided");
+  }
+
+  // Update the panel row with the new message id, un-archive
+  await prisma.ticketPanel.update({
+    where: { id: panel.id },
+    data: {
+      messageId: sentMessageId,
+      channelId,
+      archived: false,
+    },
+  });
+
+  return { messageId: sentMessageId, channelId };
+}
+
+/**
+ * Used by the dashboard recreate endpoint: takes a panel, finds a usable
+ * channel, and rebuilds. Returns the new message info or a structured
+ * error suitable for HTTP responses.
+ */
+export async function recreatePanelViaRest(
+  panelId: string,
+  guildId: string,
+  botToken: string,
+): Promise<
+  | { ok: true; messageId: string; channelId: string }
+  | { ok: false; status: number; error: string; code: string }
+> {
+  const panel = await prisma.ticketPanel.findUnique({ where: { id: panelId } });
+  if (!panel || panel.guildId !== guildId) {
+    return { ok: false, status: 404, error: "Panel not found", code: "panel_not_found" };
+  }
+
+  // If the panel has a stored channelId, try to use it. Otherwise the
+  // admin must pick a new channel via the dashboard (out of scope for
+  // this endpoint — it only re-sends into the recorded channel).
+  if (!panel.channelId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "This panel has no recorded channel. Please set a target channel first.",
+      code: "no_channel",
+    };
+  }
+
+  // Verify the channel still exists by fetching it. Don't assume.
+  const channelRes = await fetch(
+    `https://discord.com/api/v10/channels/${panel.channelId}`,
+    { headers: { Authorization: `Bot ${botToken}` } },
+  );
+  if (channelRes.status === 404) {
+    return {
+      ok: false,
+      status: 400,
+      error: "The recorded channel no longer exists. Please update the panel's target channel first.",
+      code: "channel_missing",
+    };
+  }
+  if (!channelRes.ok) {
+    return {
+      ok: false,
+      status: 502,
+      error: `Discord API error while checking channel (${channelRes.status})`,
+      code: "discord_api_error",
+    };
+  }
+
+  try {
+    const result = await rebuildAndSendPanel(
+      {
+        id: panel.id,
+        guildId: panel.guildId,
+        title: panel.title,
+        description: panel.description,
+        mode: panel.mode,
+        categoryId: panel.categoryId,
+      },
+      { targetChannelId: panel.channelId, botToken },
+    );
+
+    await createAuditLog(
+      guildId,
+      "ticket_panel_recreate",
+      "dashboard",
+      panel.id,
+      null,
+      `Recreated ticket panel "${panel.title}" in <#${result.channelId}> (new message ${result.messageId})`,
+    );
+
+    return { ok: true, messageId: result.messageId, channelId: result.channelId };
+  } catch (error) {
+    logger.error(`Failed to recreate ticket panel ${panelId}: ${error}`);
+    return {
+      ok: false,
+      status: 502,
+      error: `Failed to send panel message: ${(error as Error).message}`,
+      code: "send_failed",
+    };
+  }
+}
+
+export async function archivePanel(panelId: string, guildId: string, archivedBy: string): Promise<boolean> {
+  const panel = await prisma.ticketPanel.findUnique({ where: { id: panelId } });
+  if (!panel || panel.guildId !== guildId) return false;
+  await prisma.ticketPanel.update({
+    where: { id: panelId },
+    data: { archived: true },
+  });
+  await createAuditLog(
+    guildId,
+    "ticket_panel_archive",
+    archivedBy,
+    panel.id,
+    null,
+    `Archived ticket panel "${panel.title}"`,
+  );
+  return true;
+}
+
+export async function deletePanelRecord(panelId: string, guildId: string, deletedBy: string): Promise<boolean> {
+  const panel = await prisma.ticketPanel.findUnique({ where: { id: panelId } });
+  if (!panel || panel.guildId !== guildId) return false;
+  await prisma.ticketPanel.delete({ where: { id: panelId } });
+  await createAuditLog(
+    guildId,
+    "ticket_panel_delete",
+    deletedBy,
+    panelId,
+    null,
+    `Deleted ticket panel record "${panel.title}" (Discord message left in place)`,
+  );
+  return true;
 }

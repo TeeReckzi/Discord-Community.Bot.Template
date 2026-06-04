@@ -8,7 +8,7 @@ export default {
   async execute(member: GuildMember): Promise<void> {
     try {
       const config = await prisma.welcomeLeaveConfig.findUnique({
-        where: { guildId: member.guild.id },
+        where: { guildId_type: { guildId: member.guild.id, type: "welcome" } },
       });
 
       if (!config || config.type !== "welcome") return;

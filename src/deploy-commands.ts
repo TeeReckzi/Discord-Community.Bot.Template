@@ -1,14 +1,25 @@
-import { REST, Routes, SlashCommandBuilder } from "discord.js";
+import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import { logger } from "./services/logger";
 import * as dotenv from "dotenv";
 
 dotenv.config();
 
+/**
+ * IMPORTANT: Discord's `default_member_permissions` is a permission bitfield.
+ * It can only reference DISCORD permissions, not custom database roles.
+ * For the configured `staffRole` from GuildConfig:
+ *  - Use runtime checks via `requireBotManager` to grant access.
+ *  - For client-side visibility in Discord, admins must manually enable
+ *    the role in Server Settings > Integrations > [bot] > Commands.
+ *  - See `src/services/commandPermissions.ts` for the sync helper.
+ */
 const commands = [
-  // Config
+  // ─── /config — ManageGuild ───────────────────────────────
   new SlashCommandBuilder()
     .setName("config")
     .setDescription("View or modify server configuration")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub.setName("view").setDescription("View current server configuration"),
     )
@@ -37,10 +48,12 @@ const commands = [
         ),
     ),
 
-  // Tickets
+  // ─── /ticket — ManageChannels (panel/setup/channel ops) ──
   new SlashCommandBuilder()
     .setName("ticket")
     .setDescription("Ticket system commands")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("setup")
@@ -113,10 +126,12 @@ const commands = [
         ),
     ),
 
-  // Welcome
+  // ─── /welcome — ManageGuild ──────────────────────────────
   new SlashCommandBuilder()
     .setName("welcome")
     .setDescription("Configure welcome messages")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("setup")
@@ -144,10 +159,12 @@ const commands = [
         ),
     ),
 
-  // Leave
+  // ─── /leave — ManageGuild ────────────────────────────────
   new SlashCommandBuilder()
     .setName("leave")
     .setDescription("Configure leave messages")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("setup")
@@ -175,10 +192,12 @@ const commands = [
         ),
     ),
 
-  // Announcements
+  // ─── /announce — ManageMessages ──────────────────────────
   new SlashCommandBuilder()
     .setName("announce")
     .setDescription("Create announcements")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("create")
@@ -232,10 +251,12 @@ const commands = [
         ),
     ),
 
-  // Polls
+  // ─── /poll — ManageMessages (public voting via buttons) ──
   new SlashCommandBuilder()
     .setName("poll")
     .setDescription("Create polls")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("create")
@@ -257,10 +278,12 @@ const commands = [
         ),
     ),
 
-  // Giveaways
+  // ─── /giveaway — ManageEvents ────────────────────────────
   new SlashCommandBuilder()
     .setName("giveaway")
     .setDescription("Manage giveaways")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageEvents)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("create")
@@ -310,10 +333,12 @@ const commands = [
         ),
     ),
 
-  // Reaction Roles
+  // ─── /roles — ManageRoles (public users self-assign via buttons) ──
   new SlashCommandBuilder()
     .setName("roles")
     .setDescription("Manage reaction role panels")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName("panel")

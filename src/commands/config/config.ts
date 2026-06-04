@@ -5,7 +5,7 @@ import {
   GuildTextBasedChannel,
 } from "discord.js";
 import prisma from "../../services/prisma";
-import { requireStaff } from "../../services/permissions";
+import { requireBotManager } from "../../services/permissions";
 import { safeDeferReply, safeEditReply } from "../../services/interactions";
 import { brandedEmbed, successEmbed, errorEmbed } from "../../services/embeds";
 
@@ -54,25 +54,26 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  await safeDeferReply(interaction);
-
   const guildId = interaction.guildId;
-  if (!guildId) {
-    await safeEditReply(interaction, { embeds: [errorEmbed("This command can only be used in a server.")], ephemeral: true });
-    return;
-  }
 
-  const subcommand = interaction.options.getSubcommand();
-
-  if (subcommand === "view") {
+  if (interaction.options.getSubcommand() === "view") {
+    if (!guildId) {
+      await safeDeferReply(interaction, true);
+      await safeEditReply(interaction, {
+        embeds: [errorEmbed("This command can only be used in a server.")],
+        ephemeral: true,
+      });
+      return;
+    }
+    if (!(await requireBotManager(interaction))) return;
     await handleView(interaction, guildId);
     return;
   }
 
-  const isStaff = await requireStaff(interaction);
-  if (!isStaff) return;
+  if (!(await requireBotManager(interaction))) return;
+  if (!guildId) return;
 
-  switch (subcommand) {
+  switch (interaction.options.getSubcommand()) {
     case "set-log-channel":
       await handleSetLogChannel(interaction, guildId);
       break;
