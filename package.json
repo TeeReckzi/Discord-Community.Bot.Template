@@ -1,0 +1,29 @@
+{
+  "name": "aethorias-keep-bot",
+  "version": "1.0.0",
+  "description": "A custom Discord community bot for Aethoria's Keep",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio",
+    "commands:deploy": "tsx src/deploy-commands.ts",
+    "setup": "npm install && prisma generate && prisma db push"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
