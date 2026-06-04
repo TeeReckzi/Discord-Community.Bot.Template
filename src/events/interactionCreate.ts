@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { logger } from "../services/logger";
 import { handlePollVote } from "../modules/polls/pollManager";
+import { handleGiveawayEntry } from "../modules/giveaways/giveawayManager";
 import {
   handleTicketCreateButton,
   handleTicketCategorySelect,
@@ -124,6 +125,11 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     const panelId = parts[2];
     const roleId = parts.slice(3).join("_");
     await handleRoleButton(interaction, panelId, roleId);
+    return;
+  }
+
+  if (parts[0] === "giveaway" && parts[1] === "enter" && parts[2]) {
+    await handleGiveawayEntry(interaction, parts[2]);
     return;
   }
 

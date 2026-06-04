@@ -463,23 +463,30 @@ export async function handleTicketCreateButton(
     return;
   }
 
-  await safeDeferUpdate(interaction);
-
   const categories = await prisma.ticketCategory.findMany({
     where: { guildId: interaction.guild.id },
   });
 
   if (categories.length === 0) {
-    const embed = errorEmbed("No ticket categories have been configured. Please ask an admin to run `/ticket setup`.");
-    await safeEditReply(interaction, { embeds: [embed], components: [] });
+    await safeReply(interaction, {
+      embeds: [errorEmbed("No ticket categories have been configured. Please ask an admin to run `/ticket setup`.")],
+      ephemeral: true,
+    });
     return;
   }
 
+  // Single category: open the modal directly. A modal is itself a fresh
+  // interaction response, so we must NOT have deferred or replied first.
   if (categories.length === 1) {
     const modal = buildSubjectModal(categories[0].id, categories[0].name);
     await interaction.showModal(modal);
     return;
   }
+
+  // Multiple categories: defer the button update (the message stays put),
+  // then edit with a select menu. After deferUpdate, the only valid
+  // follow-ups are editReply / followUp — never showModal.
+  await safeDeferUpdate(interaction);
 
   const select = new StringSelectMenuBuilder()
     .setCustomId("ticket_panel_select")
@@ -519,6 +526,11 @@ export async function handleTicketCategorySelect(
     return;
   }
 
+  // showModal is the first response on this interaction — do NOT
+  // defer first. A primary-key Prisma lookup is well under the 3s
+  // budget, so we respond directly. If the DB is slow enough that
+  // this times out, the safeReply wrapper above would have caught
+  // it; in practice the slow path is the modal submit, not this one.
   const modal = buildSubjectModal(category.id, category.name);
   await interaction.showModal(modal);
 }
