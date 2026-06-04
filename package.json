@@ -14,7 +14,8 @@
     "prisma:studio": "prisma studio",
     "commands:deploy": "tsx src/deploy-commands.ts",
     "commands:sync-permissions": "tsx src/sync-command-permissions.ts",
-    "setup": "npm install && prisma generate && prisma db push"
+    "setup": "npm install && prisma generate && prisma db push",
+    "start:migrate": "prisma db push && node dist/index.js"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
