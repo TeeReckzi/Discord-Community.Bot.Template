@@ -2,14 +2,26 @@ import { Client } from "discord.js";
 import prisma from "./prisma";
 import { logger } from "./logger";
 
+/**
+ * Recovery is best-effort and isolated per section. A failure in one
+ * (e.g. transient DB error) does NOT block the rest.
+ */
 export async function recoverState(client: Client): Promise<void> {
   logger.info("Running state recovery...");
 
-  await recoverGiveaways(client);
-  await recoverPolls(client);
-  await recoverAnnouncements(client);
+  await safeRun("giveaways", () => recoverGiveaways(client));
+  await safeRun("polls", () => recoverPolls(client));
+  await safeRun("announcements", () => recoverAnnouncements(client));
 
   logger.info("State recovery complete");
+}
+
+async function safeRun(name: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (error) {
+    logger.error(`Recovery section "${name}" failed: ${error}`);
+  }
 }
 
 async function recoverGiveaways(client: Client): Promise<void> {
@@ -63,7 +75,7 @@ async function recoverPolls(client: Client): Promise<void> {
     const { endPoll } = await import("../modules/polls/pollManager");
     for (const row of result) {
       try {
-        await endPoll(row.id);
+        await endPoll(row.id, client);
         logger.info(`Recovered poll ${row.id}`);
       } catch (error) {
         logger.error(`Failed to recover poll ${row.id}: ${error}`);

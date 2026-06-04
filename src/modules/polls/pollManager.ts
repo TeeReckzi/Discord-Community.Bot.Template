@@ -1,4 +1,4 @@
-import { ButtonInteraction, TextChannel } from "discord.js";
+import { ButtonInteraction, TextChannel, Client } from "discord.js";
 import prisma from "../../services/prisma";
 import { safeDeferUpdate, safeFollowUp } from "../../services/interactions";
 import { brandedEmbed } from "../../services/embeds";
@@ -55,7 +55,7 @@ export async function handlePollVote(
   });
 }
 
-export async function endPoll(pollId: string): Promise<void> {
+export async function endPoll(pollId: string, client?: Client): Promise<void> {
   const poll = await prisma.poll.findUnique({
     where: { id: pollId },
     include: { votes: true },
@@ -78,11 +78,23 @@ export async function endPoll(pollId: string): Promise<void> {
     })
     .join("\n");
 
+  // Mark ended FIRST so a crash before the message edit doesn't cause a
+  // duplicate "ended" notification on the next tick. The Discord edit is
+  // idempotent (re-running endPoll early would just re-edit the embed).
+  await prisma.poll.update({
+    where: { id: pollId },
+    data: { ended: true, processingStartedAt: null },
+  });
+
+  // Edit the message via API fetch (not cache) so cold-start recovery
+  // works even before the guild's channels are cached.
   try {
-    const guild = (await (await import("../../client")).default).guilds.cache.get(poll.guildId);
-    if (!guild) return;
-    const channel = guild.channels.cache.get(poll.channelId) as TextChannel | undefined;
-    if (!channel) return;
+    const c = client ?? (await import("../../client")).default;
+    const channel = (await c.channels.fetch(poll.channelId)) as TextChannel | null;
+    if (!channel) {
+      logger.warn(`Poll ${pollId} channel ${poll.channelId} not found for end-message edit`);
+      return;
+    }
     const message = await channel.messages.fetch(poll.messageId);
 
     const embed = await brandedEmbed(poll.guildId);
@@ -95,11 +107,6 @@ export async function endPoll(pollId: string): Promise<void> {
   } catch (error) {
     logger.error(`Failed to update poll message ${pollId}: ${error}`);
   }
-
-  await prisma.poll.update({
-    where: { id: pollId },
-    data: { ended: true, processingStartedAt: null },
-  });
 }
 
 export async function checkEndedPolls(): Promise<void> {
