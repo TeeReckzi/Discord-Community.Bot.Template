@@ -28,7 +28,9 @@ export async function loadCommands(client: Client): Promise<void> {
       continue;
     }
 
-    const files = fs.readdirSync(dirPath).filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+    const files = fs
+      .readdirSync(dirPath)
+      .filter((f) => (f.endsWith(".ts") || f.endsWith(".js")) && !f.endsWith(".d.ts"));
 
     for (const file of files) {
       try {

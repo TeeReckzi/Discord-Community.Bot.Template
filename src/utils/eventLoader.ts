@@ -11,7 +11,9 @@ interface EventModule {
 
 export async function loadEvents(client: Client): Promise<void> {
   const eventsPath = path.join(__dirname, "..", "events");
-  const files = fs.readdirSync(eventsPath).filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+  const files = fs
+    .readdirSync(eventsPath)
+    .filter((f) => (f.endsWith(".ts") || f.endsWith(".js")) && !f.endsWith(".d.ts"));
 
   let loaded = 0;
 
