@@ -1,6 +1,6 @@
-# Aethoria's Keep Bot
+# Discord Community Bot
 
-A production-ready custom Discord community bot for Aethoria's Keep, built with Node.js, TypeScript, discord.js v14, Prisma, and PostgreSQL.
+A production-ready custom Discord community bot, built with Node.js, TypeScript, discord.js v14, Prisma, and PostgreSQL.
 
 ## Features
 
